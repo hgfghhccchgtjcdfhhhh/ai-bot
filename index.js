@@ -1,40 +1,66 @@
-const chat = document.getElementById("chat");
-const input = document.getElementById("userInput");
-const sendBtn = document.getElementById("sendBtn");
+// index.js — frontend
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const statusEl = document.getElementById('status');
 
-function appendMessage(sender, text) {
-  const msg = document.createElement("div");
-  msg.className = `msg ${sender}`;
-  msg.textContent = text;
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  div.textContent = text;
+  messagesEl.appendChild(div);
+  messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
 }
 
-async function sendMessage() {
-  const text = input.value.trim();
-  if (!text) return;
-  appendMessage("user", text);
-  input.value = "";
-  
-  appendMessage("bot", "Thinking...");
-  const thinkingEl = chat.lastElementChild;
-
+async function sendToServer(message) {
   try {
-    // Call your backend (which securely uses the API key)
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text })
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
     });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || 'Server error');
+    }
     const data = await res.json();
-
-    thinkingEl.textContent = data.reply || "No response.";
+    return data;
   } catch (err) {
-    thinkingEl.textContent = "Error connecting to HG Bot.";
+    return { error: err.message || String(err) };
   }
 }
 
-sendBtn.addEventListener("click", sendMessage);
-input.addEventListener("keypress", e => {
-  if (e.key === "Enter") sendMessage();
+async function onSend() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = '';
+  addMessage('user', text);
+  addMessage('bot', '…'); // placeholder for thinking
+  const placeholder = messagesEl.lastElementChild;
+
+  statusEl.textContent = 'Sending…';
+  const resp = await sendToServer(text);
+  if (resp.error) {
+    placeholder.textContent = 'Error: ' + resp.error;
+    statusEl.textContent = 'Error';
+  } else {
+    placeholder.textContent = resp.reply ?? 'No reply';
+    statusEl.textContent = 'Connected';
+  }
+}
+
+sendBtn.addEventListener('click', onSend);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') onSend();
 });
+
+// ping server for health
+(async function ping() {
+  try {
+    const r = await fetch('/health');
+    if (r.ok) statusEl.textContent = 'Connected';
+    else statusEl.textContent = 'Disconnected';
+  } catch {
+    statusEl.textContent = 'Disconnected';
+  }
+})();
